@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CV Analiz</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--ink:#1c2430;--mute:#647084;--line:#dfe3ea;--brand:#2456d6;--ok:#1a7f4b;--warn:#b45309}
+@media (prefers-color-scheme:dark){:root{--bg:#12161c;--card:#1a2029;--ink:#e8ecf2;--mute:#9aa6b8;--line:#2b3441;--brand:#6f9bff;--ok:#4cc38a;--warn:#f0a04b}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:760px;margin:0 auto;padding:40px 20px 80px}
+h1{font-size:1.9rem;margin:0 0 6px}
+p.sub{color:var(--mute);margin:0 0 28px}
+.modes{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.mode{background:var(--card);border:2px solid var(--line);border-radius:12px;padding:20px;text-align:left;cursor:pointer;color:inherit;font:inherit}
+.mode:hover,.mode:focus-visible{border-color:var(--brand);outline:none}
+.mode.on{border-color:var(--brand)}
+.mode b{display:block;font-size:1.1rem;margin-bottom:4px}
+.mode span{color:var(--mute);font-size:.92rem}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:22px;margin-top:18px}
+.panel[hidden]{display:none}
+label{display:block;font-weight:600;margin:0 0 6px}
+.drop{border:2px dashed var(--line);border-radius:10px;padding:26px;text-align:center;color:var(--mute);cursor:pointer}
+.drop.has{border-color:var(--ok);color:var(--ink)}
+textarea{width:100%;min-height:150px;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font:inherit;resize:vertical}
+.field{margin-top:16px}
+button.go{margin-top:18px;background:var(--brand);color:#fff;border:0;border-radius:8px;padding:12px 22px;font:inherit;font-weight:600;cursor:pointer}
+button.go:disabled{opacity:.5;cursor:wait}
+.err{color:#c0392b;margin-top:12px}
+.score{display:flex;align-items:center;gap:16px;margin-bottom:14px}
+.score .n{font-size:2.6rem;font-weight:700;color:var(--brand)}
+.bar{flex:1;height:10px;background:var(--line);border-radius:6px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--brand)}
+h3{margin:22px 0 8px;font-size:1.05rem}
+ul{margin:0;padding-left:20px}li{margin:4px 0}
+.tags{display:flex;flex-wrap:wrap;gap:8px}
+.tag{padding:4px 10px;border-radius:999px;font-size:.88rem;background:var(--bg);border:1px solid var(--line)}
+.tag.ok{border-color:var(--ok);color:var(--ok)}.tag.bad{border-color:var(--warn);color:var(--warn)}
+@media(max-width:560px){.modes{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<main>
+  <h1>CV Analiz</h1>
+  <p class="sub">Önce ne yapmak istediğini seç, sonra CV'ni PDF olarak yükle.</p>
+
+  <div class="modes">
+    <button class="mode" data-mode="analysis"><b>CV analizi</b><span>Güçlü yönler, eksikler ve iyileştirme önerileri</span></button>
+    <button class="mode" data-mode="match"><b>CV ve iş ilanı uyumu</b><span>İlanla eşleşen ve eksik becerileri gör</span></button>
+  </div>
+
+  <section class="panel" id="form" hidden>
+    <label for="file">CV (PDF, en fazla 5 MB)</label>
+    <div class="drop" id="drop" tabindex="0">PDF seçmek için tıkla veya buraya sürükle</div>
+    <input type="file" id="file" accept="application/pdf" hidden>
+    <div class="field" id="jobBox" hidden>
+      <label for="job">İş ilanı metni</label>
+      <textarea id="job" placeholder="İlan metnini buraya yapıştır"></textarea>
+    </div>
+    <button class="go" id="go">Analiz et</button>
+    <div class="err" id="err" role="alert"></div>
+  </section>
+
+  <section class="panel" id="out" hidden></section>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let mode = null, file = null;
+
+document.querySelectorAll(".mode").forEach((b) => b.addEventListener("click", () => {
+  mode = b.dataset.mode;
+  document.querySelectorAll(".mode").forEach((x) => x.classList.toggle("on", x === b));
+  $("form").hidden = false; $("out").hidden = true; $("err").textContent = "";
+  $("jobBox").hidden = mode !== "match";
+}));
+
+function setFile(f) {
+  if (!f) return;
+  file = f;
+  $("drop").textContent = f.name;
+  $("drop").classList.add("has");
+}
+$("drop").onclick = () => $("file").click();
+$("drop").onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") $("file").click(); };
+$("file").onchange = (e) => setFile(e.target.files[0]);
+$("drop").ondragover = (e) => e.preventDefault();
+$("drop").ondrop = (e) => { e.preventDefault(); setFile(e.dataTransfer.files[0]); };
+
+// Güvenlik: sunucudan gelen metinler asla innerHTML ile basılmaz, textContent kullanılır.
+function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+function list(title, items) {
+  if (!items || !items.length) return null;
+  const f = document.createDocumentFragment(); f.append(el("h3", null, title));
+  const ul = el("ul"); items.forEach((i) => ul.append(el("li", null, i))); f.append(ul); return f;
+}
+function tags(title, items, cls) {
+  if (!items || !items.length) return null;
+  const f = document.createDocumentFragment(); f.append(el("h3", null, title));
+  const d = el("div", "tags"); items.forEach((i) => d.append(el("span", "tag " + cls, i))); f.append(d); return f;
+}
+
+function render(data) {
+  const r = data.result, out = $("out"); out.replaceChildren();
+  const s = el("div", "score");
+  s.append(el("div", "n", String(r.puan ?? "-")));
+  const bar = el("div", "bar"), i = el("i"); i.style.width = Math.min(100, +r.puan || 0) + "%"; bar.append(i);
+  s.append(bar, el("div", null, data.mode === "match" ? "Uyum puanı" : "CV puanı"));
+  out.append(s, el("p", null, r.ozet || ""));
+  if (data.mode === "analysis") {
+    if (r.deneyim_yili) out.append(el("p", null, "Tahmini deneyim: " + r.deneyim_yili));
+    [list("Güçlü yönler", r.guclu_yonler), list("Geliştirilecek alanlar", r.gelistirilecek_alanlar),
+     tags("Beceriler", r.beceriler, ""), list("Öneriler", r.oneriler)].forEach((x) => x && out.append(x));
+  } else {
+    [tags("Eşleşen beceriler", r.eslesen_beceriler, "ok"), tags("Eksik beceriler", r.eksik_beceriler, "bad"),
+     list("Bu ilan için avantajların", r.guclu_yonler), list("Başvurmadan önce yap", r.oneriler)].forEach((x) => x && out.append(x));
+  }
+  out.hidden = false; out.scrollIntoView({ behavior: "smooth" });
+}
+
+$("go").onclick = async () => {
+  $("err").textContent = "";
+  if (!file) return ($("err").textContent = "Önce bir PDF seç.");
+  if (mode === "match" && $("job").value.trim().length < 30) return ($("err").textContent = "İş ilanı metnini yapıştır.");
+  const fd = new FormData();
+  fd.append("mode", mode); fd.append("cv", file); fd.append("job", $("job").value);
+  $("go").disabled = true; $("go").textContent = "Analiz ediliyor…";
+  try {
+    const res = await fetch("/api/analyze", { method: "POST", body: fd });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    render(data);
+  } catch (e) { $("err").textContent = e.message || "Bir hata oluştu."; }
+  $("go").disabled = false; $("go").textContent = "Analiz et";
+};
+</script>
+</body>
+</html>
